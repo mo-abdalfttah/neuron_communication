@@ -1,0 +1,275 @@
+---
+author: "Mohamed Abdalfttah"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  title: "Neural Circuits - Annotation Wild Type"
+format:
+  html:
+    toc: true
+    toc-location: left
+    number-sections: true
+    df-print: paged
+editor: 
+  render-on-save: true
+---
+
+## Script Description
+
+In this script we will annotate the cells from each mouse model separately using two approaches:
+
+1- Canonical Markers
+
+2- Gene expression profile
+
+```         
+ "482n1" Lung
+ "b16" Melanoma
+ "eo7711" Breast
+```
+
+## Load Libraries
+
+```{r, eval=FALSE}
+#install.packages("devtools")
+#devtools::install_github("immunogenomics/presto")
+#install.packages('assertthat')
+#BiocManager::install("ComplexHeatmap")
+```
+
+```{r}
+library(here)
+library(Seurat)
+library(tidyverse)
+library(DoubletFinder)
+library(harmony)
+library(scuttle)
+library(scater)
+library(scCustomize)
+library(SCpubr)
+library(ggsci)
+library(scrubletR)
+library(qs)
+library(infercnv)
+library(reticulate)
+library(scran)
+library(viridis)
+library(glue)
+```
+
+## Create Function
+
+```{r}
+Save_Markers = function(Markers, Path_write){
+  mgs_ls = lapply(sort(unique(Markers$cluster)), function(clust) {
+    Markers %>%
+      dplyr::filter(cluster == clust & pct.1 > 0.25) %>%
+      dplyr::arrange(dplyr::desc(avg_log2FC))
+  })
+  names(mgs_ls) = glue("cluster-{sort(unique(Markers$cluster))}")
+  openxlsx::write.xlsx(mgs_ls, file = Path_write)}
+
+```
+
+## Load Objects
+
+```{r}
+path <- "/home/mabdalfttah/projects/neural_circuits/"
+```
+
+```{r}
+seurat_list <- "{path}/3-preprocess/objects/se_list_preprocess.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qread(.)
+seurat_list
+```
+
+### Select the model
+
+```{r}
+model <- "sham"
+se_obj <- seurat_list[[model]]
+```
+
+```{r}
+rm(seurat_list)
+```
+
+```{r}
+DimPlot(se_obj, cols = ggsci::pal_igv()(50), group.by = "orig.ident", label = T)
+DimPlot(se_obj, cols = ggsci::pal_igv()(50), group.by = "RNA_snn_res.0.2", label = T)
+VlnPlot(se_obj, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), pt.size = 0)
+```
+
+### Check the Doublets
+
+```{r, fig.width=5}
+FeaturePlot(object = se_obj, features = "doublet_scores") 
+DimPlot(object = se_obj, group.by = "predicted_doublets")
+```
+
+# Explaring the Markers
+
+```{r, fig.width=15, fig.height=10}
+# Assuming seurat_obj is your Seurat object for visualization
+brain_cell_types_markers <- list(
+  Neurons = c("Snap25", "Rbfox3", "Syt1", "Grin1", "Gad1", "Gad2", "Slc17a7", "Map2"),
+  Astrocytes = c("Gfap", "Aqp4", "Aldh1l1", "Slc1a3", "S100b"),
+  Oligodendrocytes = c("Mog", "Olig2", "Plp1", "Cnp", "Mbpa"),
+  Microglia = c("C1qa", "Csf1r", "P2ry12", "Aif1", "Tmem119"),
+  OPCs = c("Pdgfra", "Cspg4", "Sox10", "Olig1", "Olig2"),
+  Endothelial = c("Flt1", "Pecam1", "Cldn5", "Cdh5", "Slco1c1"),
+  Ependymal = c("Foxj1", "Vim", "Ttr", "Dnah5", "Sox9"),
+  vSMCs = c("Acta2", "Tagln", "Myh11", "Cnn1", "Lmod1"),
+  Pericytes = c("Pdgfrb", "Rgs5", "Anpep", "Cspg4", "Kcnj8")
+)
+
+# Loop through each cell type and visualize the markers using FeaturePlot
+for (cell_type in names(brain_cell_types_markers)) {
+  markers <- brain_cell_types_markers[[cell_type]]
+  print(paste("Visualizing", cell_type, "markers"))
+  print(FeaturePlot(se_obj, features = markers, ncol = 3) + 
+    theme(plot.title = element_text(hjust = 0.5)))  # Center the title
+}
+
+# Loop through each cell type and visualize the markers using FeaturePlot
+for (cell_type in names(brain_cell_types_markers)) {
+  markers <- brain_cell_types_markers[[cell_type]]
+  print(paste("Visualizing", cell_type, "markers"))
+  print(VlnPlot(se_obj, features = markers,
+                cols = ggsci::pal_igv()(50), pt.size = 0) + 
+    theme(plot.title = element_text(hjust = 0.5)))  # Center the title
+}
+
+```
+
+## How people annotate cells?
+
+Here is this paper they annotate the major cell types like this: Annotation of cell clusters based on the expression of canonical gene markers identified the following populations: excitatory neurons (Ex) that express *SYT1* and *SLC17A7*, inhibitory neurons (In) that express *SYT1* and *GAD1*, astrocytes (Ast1 and Ast2) that express *AQP4*, ependymal cells (Ep) that express *CFAP299*, oligodendrocyte progenitor cell (OPC) that express *VCAN*, oligodendrocytes (Oli) that express *MOBP*, epithelial cells (Epi) that express *HTR2C*, endothelial cells (End) that express *FLT1*, mesenchymal cells (Mes) that express *COL1A1*, pericytes (Per1 and Per2) that express *PDGFRB*, microglial cells (Mic) that express *APBB1IP*, and lymphocyte (LM) that express *CD96* and monocytes/macrophage (Mo/MP), expressing *CD163* ([reference](https://genomemedicine.biomedcentral.com/articles/10.1186/s13073-021-00933-8))
+
+```{r, fig.width=15, fig.height=10}
+genes <- str_to_title(c("SYT1", # Neurons
+                                              "SLC17A7", # excitatory neurons
+                                              "GAD1", # inhibitory neurons
+                                              "AQP4", # Astrocytes
+                                              "CFAP299", # ependymal 
+                                              "VCAN", # oligodendrocyte progenitor 
+                                              "MOBP", # oligodendrocytes
+                                              "Epcam", # epithelial 
+                                              "FLT1", # endothelial 
+                                              "COL1A1", # mesenchymal 
+                                              "PDGFRB", # pericytes
+                                              "APBB1IP",# microglial 
+                                              "Ptprc", # lymphocyte
+                                              "CD163", # monocytes/macrophage
+                                          "Mki67", "Top2a" #Prolifrative Cells
+                                              ))
+
+FeaturePlot(se_obj, features = genes)
+VlnPlot(se_obj, features = genes, cols = ggsci::pal_igv()(50),
+        group.by = "RNA_snn_res.0.2",pt.size = 0)
+
+```
+
+# Calculate Marker Genes
+
+```{r}
+Idents(se_obj) <- se_obj$RNA_snn_res.0.2
+markers <- FindAllMarkers(object = se_obj, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+## Heatmap Visulization
+
+```{r, fig.height=10, fig.width=10}
+markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1) %>%
+    slice_head(n = 5) %>%
+    ungroup() -> top10
+DoHeatmap(se_obj, features = top10$gene) + NoLegend()
+```
+
+### Save Marker Genes
+
+```{r}
+"{path}/4-annotation/objects/{model}_markers_res_0.2.xlsx" %>%
+  glue::glue() %>%
+  here::here() %>%
+  Save_Markers(markers, Path_write = .)
+```
+
+# Assign The Annotation
+
+```{r}
+se_obj@meta.data <- se_obj@meta.data %>%
+  mutate(annotation_lvl1 = case_when(
+    RNA_snn_res.0.2 == 0 ~ "Excitatory neurons",
+    RNA_snn_res.0.2 == 1 ~ "Oligodendrocytes",
+    RNA_snn_res.0.2 == 2 ~ "Astrocytes",
+    RNA_snn_res.0.2 == 3 ~ "Excitatory neurons",
+    RNA_snn_res.0.2 == 4 ~ "Microglia",
+    RNA_snn_res.0.2 == 5 ~ "Inhibitory neurons",
+    RNA_snn_res.0.2 == 6 ~ "Endothelial",
+    RNA_snn_res.0.2 == 7 ~ "OPCs",
+    RNA_snn_res.0.2 == 8 ~ "Inhibitory neurons",
+    RNA_snn_res.0.2 == 9 ~ "Prolifrative Cells",
+    RNA_snn_res.0.2 == 10 ~ "Mesenchymal"
+  ))
+```
+
+```{r}
+DimPlot(se_obj, group.by = "annotation_lvl1", cols = ggsci::pal_igv()(50))
+```
+
+## Confirm the Annotation
+
+```{r, fig.width=10, fig.height=10}
+genes_multiple <- str_to_title(c("Gfap", "Aqp4", "Aldh1l1","Slc1a3", "S100b", # Astrocytes
+                                  "Flt1", "Pecam1", "Cldn5", "Cdh5","Slco1c1", # Endothilial 
+                                  "Snap25", "Rbfox3", "Syt1", "Grin1","Gad1", "Gad2", "Slc17a7", "Map2", # Neuoron 
+                                  "COL1A1", "Dcn", # Mesenchymal
+                                  "C1qa", "Csf1r", "P2ry12", "Aif1", "Tmem119", # Microglia
+                                  "Mog", "Olig2", "Plp1", "Cnp", # Oligodendrocytes
+                                  "Pdgfra", "Cspg4", "Sox10", "Olig1", # OPcs
+                                  "Mki67", "Top2a" #Prolifrative Cells
+                                  ))
+```
+
+### Dot plot
+
+```{r, fig.width=10, fig.height=10}
+DotPlot(object = se_obj, features = genes_multiple, group.by = "annotation_lvl1") + 
+  scale_color_viridis(option = "viridis",direction = 1) +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_point(aes(size = pct.exp * 1.1),  # Increase size slightly to create the halo
+             shape = 21,  # Use a circle outline
+             fill = NA,  # Hollow circle
+             color = "black",  # Outline color (can adjust)
+             stroke = 0.8)
+```
+
+### Clusterd Dot plot
+
+```{r, fig.width=10, fig.height=10}
+Clustered_DotPlot(seurat_object = se_obj, 
+                  features = genes_multiple, 
+                  cluster_ident = T,
+                  cluster_feature = T,
+                  group.by = "annotation_lvl1")
+```
+
+# Save Object
+
+```{r}
+"{path}/4-annotation/objects/se_obj_{model}.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qsave(se_obj,.)
+```
+
+# Session Information
+
+```{r}
+sessionInfo()
+```

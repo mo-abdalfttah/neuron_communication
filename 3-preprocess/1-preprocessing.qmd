@@ -1,0 +1,183 @@
+---
+author: "Mohamed Abdalfttah"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  title: "Neural Circuits - Preprocessing"
+format:
+  html:
+    toc: true
+    toc-location: left
+    number-sections: true
+    df-print: paged
+editor: 
+  render-on-save: true
+---
+
+## Script Description
+
+After quality check and control, we need to do some pre-processing for the single cell data, this processing including Normalization, select the Highly Variable Genes, Dimensionality reduction.
+
+```         
+ "482n1" Lung
+ "b16" Melanoma
+ "eo7711" Breast
+```
+
+## Load Libraries
+
+```{r, eval=FALSE}
+#BiocManager::install("scran")
+#install.packages("VennDiagram")
+#install.packages("UpSetR")
+```
+
+```{r}
+library(here)
+library(Seurat)
+library(tidyverse)
+library(DoubletFinder)
+library(harmony)
+library(scuttle)
+library(scater)
+library(scCustomize)
+library(SCpubr)
+library(ggsci)
+library(scrubletR)
+library(qs)
+library(infercnv)
+library(reticulate)
+library(scran)
+```
+
+## Load Objects
+
+```{r}
+path <- "/home/mabdalfttah/projects/neural_circuits/"
+```
+
+```{r}
+seurat_list <- "{path}/2-qc/objects/se_list_qc.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qread(.)
+seurat_list
+```
+
+## Normalization
+
+```{r}
+seurat_list <- lapply(X = seurat_list,FUN = function(obj){
+  NormalizeData(obj)
+})
+```
+
+## Highly Variable Genes
+
+In this step, we don't use Seurat default method, which is vst method, but we use modelgenvar from Scater package!
+
+### How It Works:
+
+1.  **Total Variation**: First, you calculate how much the gene’s expression varies overall across all cells. This gives you the "total observed variation."
+
+2.  **Estimate the Technical Component**:
+
+    -   You then estimate how much of this variation is likely due to noise or technical factors (the technical component).
+
+    -   This estimation is based on the general trend that genes with higher expression levels tend to have more variation simply due to technical reasons, not because of biology.
+
+3.  **Calculate Biological Variation**:
+
+    -   Now, you subtract the estimated technical component from the total observed variation.
+
+    -   What’s left after this subtraction is the **biological variation**. This is the part of the variation that is likely due to real biological differences between the cells.
+
+### Summary:
+
+-   **Total Observed Variation**: The total amount of variation you see in gene expression across cells.
+
+-   **Technical Component**: The part of this variation that is just noise or errors.
+
+-   **Biological Variation**: The part of the variation that is meaningful and due to real biological differences.
+
+#### Interpretation:
+
+-   **mean**: The average expression level of each gene.
+
+-   **total**: The total observed variance of each gene.
+
+-   **tech**: The variance expected due to technical noise (the technical component).
+
+-   **bio**: The variance remaining after subtracting the technical component from the total variance (the biological variation).
+
+```{r}
+sce_list <- lapply(seurat_list, function(obj) {
+  as.SingleCellExperiment(obj)
+})
+
+```
+
+```{r}
+# Initialize a list to store HVG results
+hvg_list <- list()
+
+# Loop over each patient's SCE and calculate HVGs
+for (model in names(sce_list)) {
+  cat("Processing model:", model, "\n")
+  SCE_model <- sce_list[[model]]
+  HVG_model <- modelGeneVar(SCE_model)
+  HVG_model <- getTopHVGs(stats = HVG_model, fdr.threshold = 0.01,n = 2000)
+  hvg_list[[model]] <- HVG_model
+}
+
+# Example: Inspect HVGs for the first patient
+print(hvg_list[[1]])
+
+```
+
+#### Add the HVG to Seurat object!
+
+```{r}
+for (i in seq_along(seurat_list)) {
+  VariableFeatures(seurat_list[[i]]) <-  hvg_list[[i]]
+}
+```
+
+## Pre-processing
+
+```{r}
+seurat_list <- lapply(seurat_list, function(obj){
+  mouse_name <- unique(obj$orig.ident)
+  cat("\n==========================================\n")
+  cat("Processing mouse:", mouse_name, "\n")
+  cat("==========================================\n")
+  all.genes <- rownames(obj)
+  obj <- ScaleData(obj, features = all.genes)
+  obj <- RunPCA(obj, features = VariableFeatures(object = obj))
+  print(names(obj))
+  print(obj[["pca"]], dims = 1:5, nfeatures = 5)
+  print(ElbowPlot(obj))
+  obj <- FindNeighbors(obj, dims = 1:15)
+  obj <- FindClusters(obj, resolution = c(0.1, 0.2))
+  obj <- RunUMAP(obj, dims = 1:15)
+  print(DimPlot(obj, reduction = "umap", 
+                group.by = c("RNA_snn_res.0.1","RNA_snn_res.0.2"),
+                cols = ggsci::pal_igv()(50)))
+  return(obj)
+})
+```
+
+## Save Object
+
+```{r}
+"{path}/3-preprocess/objects/se_list_preprocess.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qsave(seurat_list,.)
+
+```
+
+## Session Information
+
+```{r}
+sessionInfo()
+```

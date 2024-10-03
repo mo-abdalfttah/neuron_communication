@@ -1,0 +1,401 @@
+---
+author: "Mohamed Abdalfttah"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  title: "Neural Circuits - Quality Control"
+format:
+  html:
+    toc: true
+    toc-location: left
+    number-sections: true
+    df-print: paged
+editor: 
+  render-on-save: true
+---
+
+## Script Description
+
+In this script we will read merged object and perform the QC for each mouse model separately using [scater](https://bioconductor.org/packages/release/bioc/html/scater.html), [Seurat](https://satijalab.org/seurat/) and [Scrublet](https://github.com/swolock/scrublet)!
+
+## Install Packages
+
+```{r,eval=FALSE}
+
+```
+
+## Load Libraries
+
+```{r}
+library(here)
+library(Seurat)
+library(tidyverse)
+library(DoubletFinder)
+library(harmony)
+library(scuttle)
+library(scater)
+library(scCustomize)
+library(SCpubr)
+library(ggsci)
+library(scrubletR)
+library(qs)
+library(infercnv)
+library(reticulate)
+```
+
+## Create Functions
+
+```{r}
+theme_plot <- theme(text = element_text(size = 20),    
+      title = element_text(size = 20),    
+      axis.title = element_text(size = 20),
+      axis.text = element_text(size = 20), 
+      legend.title = element_text(size = 20),
+      legend.text = element_text(size = 20))
+
+```
+
+## Load Data
+
+### Define Path
+
+```{r}
+path <- "/home/mabdalfttah/projects/neural_circuits"
+```
+
+### Load Object
+
+```{r}
+se_obj <- "{path}/1-data/seurat_obj_experiment.rds" %>%
+    glue::glue() %>%
+    here::here() %>%
+    readRDS(.)
+```
+
+### Split Objects
+
+```{r}
+seurat_list <- SplitObject(se_obj, split.by = "orig.ident")
+```
+
+## Quality Control
+
+### **Why we need to perform quality control?**
+
+Low-quality libraries in scRNA-seq data can arise from a variety of sources such as cell damage during dissociation or failure in library preparation (e.g., inefficient reverse transcription or PCR amplification). These usually manifest as “cells” with low total counts, few expressed genes and high mitochondrial or spike-in proportions. These low-quality libraries are problematic as they can contribute to misleading results in downstream analyses:
+
+-   **Formation of Artifacts:** Low-quality cells can cluster together based on damage-induced expression profiles, creating artificial intermediate states or trajectories between distinct cell populations.
+
+-   **Misleading Variance and Principal Components:** Differences in cell quality can dominate variance and principal components, capturing technical artifacts rather than true biological variation.
+
+-   **False Upregulation:** Aggressive scaling in low-quality libraries can falsely inflate the expression of contaminant transcripts, leading to misleading interpretations of gene upregulation.
+
+### **How we detect the low quality cells?**
+
+-   **Library Size:** Low-quality cells have small library sizes, indicating RNA loss during preparation due to cell lysis or inefficient cDNA capture.
+
+-   **Expressed Features:** Cells with few expressed genes are likely of poor quality, reflecting inadequate capture of the transcript population.
+
+-   **Spike-in Proportion:** High spike-in transcript proportions signal RNA loss, indicating poor cell quality.
+
+-   **Mitochondrial Reads:** High proportions of mitochondrial reads suggest poor-quality cells, likely due to RNA loss from damaged or perforated cells.
+
+### Detect the low quality cells with adaptive thresholds
+
+We will use [SingleCellExperiment](https://www.bioconductor.org/packages/release/bioc/html/SingleCellExperiment.html) object to create the QC metrics using [scater](https://bioconductor.org/packages/release/bioc/html/scater.html) package utilizing [**perCellQCMetrics()**]{.underline} and [**perCellQCFilters()**]{.underline} functions:
+
+-   **Assumption:** Most cells in the data set are of high quality.
+
+-   **Outlier Detection:** Identify outliers for various QC metrics based on their deviation from the median.
+
+-   **Metric Calculation:** Use the [Median Absolute Deviation (MAD)](https://en.wikipedia.org/wiki/Median_absolute_deviation) to measure how much a cell's QC metric deviates from the median of all cells.
+
+-   **Outlier Threshold:** A cell is considered an outlier if its metric is more than 3 MADs away from the median in the problematic direction.
+
+-   **Rationale:** This threshold is designed to retain 99% of non-outlier values under a normal distribution.
+
+```{r}
+SCE_list <- list()
+for (mouse_name in names(seurat_list)) {
+  obj <- seurat_list[[mouse_name]]
+  
+  # Convert Seurat object to SingleCellExperiment
+  metadata <- obj@meta.data
+  mtx <- obj@assays$RNA$counts
+  SCE <- SingleCellExperiment(assays = list(counts = mtx),
+                              colData = metadata)
+  
+  # Identify mitochondrial genes
+  location <- rownames(SCE)
+  is.mito <- grepl("^mt-", location)
+  
+  # Calculate per cell QC metrics
+  df <- perCellQCMetrics(SCE, subsets = list(Mito = is.mito))
+
+  # Apply perCellQCFilters
+  reasons <- perCellQCFilters(df, 
+                              sub.fields = c("subsets_Mito_percent"))
+  
+  # Output structure for better readability
+  cat("\n==========================================\n")
+  cat("Processing mouse:", mouse_name, "\n")
+  cat("==========================================\n")
+  
+  # Sum of reasons columns
+  cat("\n--- Summary of QC Filters Applied ---\n")
+  print(colSums(as.matrix(reasons)))
+  
+  # Summary of discard column
+  cat("\n--- Summary of Discard ---\n")
+  print(summary(reasons$discard))
+  
+  # Thresholds
+  cat("\n--- Thresholds ---\n")
+  
+  cat("\nLow Library Size Threshold:\n")
+  print(attr(reasons$low_lib_size, "thresholds"))
+  
+  cat("\nLow Features Threshold:\n")
+  print(attr(reasons$low_n_features, "thresholds"))
+  
+  cat("\nHigh Mitochondrial Percent Threshold:\n")
+  print(attr(reasons$high_subsets_Mito_percent, "thresholds"))
+  
+  # Append QC metrics and discard information to colData of SCE
+  colData(SCE) <- cbind(colData(SCE), df)
+  SCE$discard <- reasons$discard
+  
+  # Optionally store SCE back in the list or save results
+  SCE_list[[mouse_name]] <- SCE
+}
+
+```
+
+### Visualization
+
+```{r, fig.width=20, fig.height=7}
+# Loop through each sample in the Seurat list and the corresponding SCE object
+for (mouse_name in names(seurat_list)) {
+  
+  # Access Seurat and SCE objects for the current mouse
+  obj <- seurat_list[[mouse_name]]  # Access the Seurat object
+  SCE <- SCE_list[[mouse_name]]  # Access the corresponding SCE object
+  
+  # 1. Add "discard" column to Seurat object from SCE's discard results
+  obj$discard <- SCE$discard
+  
+  # 2. Calculate mitochondrial percentage in Seurat object
+  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^mt-")
+  
+  # 3. Generate violin plot colored by "discard"
+  print(VlnPlot(obj, features = c("nCount_RNA","nFeature_RNA", "percent.mt"), 
+          ncol = 3, cols = ggsci::pal_igv()(50)) + 
+    ggtitle(paste("Violin Plot:", mouse_name)) +
+      theme_plot
+      )
+  
+  # 4. Generate ColData plots for SCE colored by "discard"
+  plot1 <- plotColData(SCE, x = "orig.ident", y = "sum", colour_by = "discard") + 
+    ggtitle(paste(" Counts:", mouse_name)) + theme_plot
+  
+  plot2 <- plotColData(SCE, x = "orig.ident", y = "detected", colour_by = "discard") +
+    ggtitle(paste("Genes:", mouse_name)) + theme_plot
+  
+  plot3 <- plotColData(SCE, x = "orig.ident", y = "subsets_Mito_percent", colour_by = "discard") +
+    ggtitle(paste("Mitochondrial Percent:", mouse_name)) + theme_plot
+  
+  # Combine and display plots
+  combined_plot <- plot1 + plot2 + plot3
+  print(combined_plot)
+
+  fplot1 <- plotColData(SCE, x="sum", y="subsets_Mito_percent", colour_by="discard") +
+    ggtitle(paste(mouse_name)) + theme_plot
+
+  fplot2 <- plotColData(SCE, x="sum", y="detected",colour_by="discard") +
+    ggtitle(paste(mouse_name)) + theme_plot
+
+  fplot3 <- plotColData(SCE, x="detected", y="subsets_Mito_percent",colour_by="discard") +
+    ggtitle(paste(mouse_name)) + theme_plot
+  
+  combined_fplot <- fplot1 + fplot2 + fplot3
+  print(combined_fplot)
+  # Update the seurat_obj back into the seurat_list
+  seurat_list[[mouse_name]] <- obj
+}
+
+```
+
+## Identify Doublet Cells
+
+-   **Single-cell RNA-sequencing (scRNAseq)** can capture "doublets" where two or more cells are sequenced together, impacting data accuracy.
+
+-   **Technology**: High-throughput droplet microfluidic and well-based technologies allow for the isolation and barcoding of cell transcriptomes but are prone to cell multiplets, where two or more cells are captured and reported as one.
+
+-   **Doublets** are common (10-20% in experiments) and need accurate detection. "Homotypic" doublets (same cell type) are hard to detect but less problematic, while "heterotypic" doublets (different cell types) can create false new cell types.
+
+-   **Multiplet Issue**: Multiplets generate hybrid transcriptomes that can create misleading intermediate cell states, which complicate downstream analyses by appearing as distinct cell types or affecting gene expression and regulatory network inferences.
+
+To do this we need to use [Scrublet](https://github.com/Moonerss/scrubletR) package, which is a python package to detect the doublets in single cell data, but since it is not updated to work with Seurart v5, we need to modify it is function [scrublet_R()](https://rdrr.io/github/scfurl/m3addon/src/R/scrublet.R) specifically line 12 to make it work with our current Seurat version:
+
+*`X <- as(Matrix::t(seurat_obj@assays$RNA$counts), "TsparseMatrix")`*
+
+it should be:
+
+`X <- as(Matrix::t(seurat_obj@assays$RNA@layers$counts), "TsparseMatrix")`
+
+```{r, eval=FALSE}
+trace(scrublet_R, edit = TRUE)
+
+```
+
+```{r, eval=FALSE}
+# First install python for reticulate
+# bash -c "$(curl -L https://rstd.io/python-install)"
+# library(reticulate)
+# reticulate::py_config() 
+# Here Python home should be assigned to reticulate
+# reticulate::py_install("scrublet", method = "pip")
+
+reticulate::py_config() 
+scrublet_list <- lapply(seurat_list, function(seurat_obj) {
+  res <- scrublet_R(seurat_obj = seurat_obj)
+  metadata <- seurat_obj@meta.data  # Extract the metadata
+  metadata$predicted_doublets <- res$predicted_doublets
+  metadata$doublet_scores <- res$doublet_scores
+  #metadata <- rownames_to_column(metadata)
+  #metadata$rowname <- paste0(metadata$sample_id, "_", metadata$rowname)
+  #rownames(metadata) <- metadata$rowname
+  return(metadata[, c("predicted_doublets", "doublet_scores")]) 
+})
+```
+
+```{r, eval=FALSE}
+"{path}/2-qc/objects/scrublet_results.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qsave(scrublet_list,.)
+```
+
+```{r}
+scrublet_list <- "{path}/2-qc/objects/scrublet_results.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qread(.)
+```
+
+```{r}
+for (mouse_name in names(seurat_list)) {
+  
+  # Access Seurat object and corresponding Scrublet dataframe for the current mouse
+  obj <- seurat_list[[mouse_name]]  # Get Seurat object
+  scrublet_df <- scrublet_list[[mouse_name]]  # Get corresponding Scrublet data frame
+  
+  # Ensure that the rownames (cell barcodes) of the scrublet data frame match the Seurat object cells
+  if (!all(rownames(scrublet_df) %in% colnames(obj))) {
+    stop(paste("Mismatch between scrublet data and Seurat object for", mouse_name))
+  }
+  
+  # Add Scrublet data (predicted_doublets, doublet_scores) to the Seurat object's metadata
+  obj <- AddMetaData(obj, metadata = scrublet_df)
+  
+  # Update the Seurat object back in the Seurat list
+  seurat_list[[mouse_name]] <- obj
+}
+```
+
+### Visualization 
+
+```{r, fig.width=20, fig.height=15}
+# Loop through each Seurat object in the seurat_list
+for (mouse_name in names(seurat_list)) {
+  
+  obj <- seurat_list[[mouse_name]]  # Get the Seurat object for each mouse
+  obj$orig.ident <- as.character(obj$orig.ident)
+  # Violin Plot for Doublet Scores by Patient
+  p1 <- VlnPlot(obj, features = "doublet_scores",
+                group.by = "orig.ident",
+                cols = ggsci::pal_igv()(50)) +
+    theme(legend.position = "none") +
+    ggtitle(paste("Doublet Scores:", mouse_name)) +
+    theme_plot
+  
+  # Summarize the number of predicted doublets per patient
+  doublet_summary <- as.data.frame(table(obj$orig.ident, obj$predicted_doublets))
+  colnames(doublet_summary) <- c("Model", "Predicted_Doublet", "Count")
+  
+  # Bar Plot of Predicted Doublets Proportion by Patient
+  p2 <- ggplot(doublet_summary, aes(x = Model, y = Count, fill = Predicted_Doublet)) +
+    geom_bar(stat = "identity", position = "fill") +
+    scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "blue")) +
+    ylab("Proportion") +
+    ggtitle(paste("Predicted Doublets:", mouse_name)) +
+    theme_light() +
+    theme_plot
+  
+  # Ridge Plot for Doublet Scores by Predicted Doublet Status
+  p3 <- RidgePlot(obj, features = "doublet_scores", group.by = "predicted_doublets") +
+    ggtitle(paste("Distribution of Doublet Scores:", mouse_name)) + 
+    theme_plot
+  
+  # Feature Scatter Plot for Doublet Scores vs RNA Counts
+  obj$Doublet_Label <- ifelse(obj$predicted_doublets == "TRUE", "Doublet", "Singlet")
+  p4 <- FeatureScatter(obj, feature1 = "nCount_RNA", feature2 = "doublet_scores", 
+                       group.by = "predicted_doublets", cols = ggsci::pal_igv()(50)) +
+    ggtitle(paste("nCount_RNA vs Doublet Scores:", mouse_name)) +
+    theme_plot
+  
+  # Scatter Plot of nFeature_RNA vs nCount_RNA colored by doublet_scores
+  plot_data <- FetchData(obj, vars = c("nFeature_RNA", "nCount_RNA", "doublet_scores"))
+  p5 <- ggplot(plot_data, aes(x = nCount_RNA, y = nFeature_RNA, color = doublet_scores)) +
+    geom_point(alpha = 0.7) +
+    scale_color_gradient(low = "blue", high = "red") +
+    theme_minimal() +
+    labs(title = paste("nFeature_RNA vs nCount_RNA colored by doublet_scores:", mouse_name),
+         x = "nFeature_RNA",
+         y = "nCount_RNA",
+         color = "Doublet Scores") +
+    theme_plot
+  
+  # Combine all plots using patchwork and print them
+  combined_plot <- (p1 | p2) / (p3 | p4 | p5)
+  print(combined_plot)
+  
+  # Optionally, save the plots for each mouse to a file
+  # ggsave(paste0("Doublet_Visualization_", mouse_name, ".png"), plot = combined_plot, width = 15, height = 10)
+}
+
+```
+
+## Filter Low Quality Cells
+
+```{r}
+# Loop through each Seurat object in the list and apply the subset operation
+for (mouse_name in names(seurat_list)) {
+  
+  # Access the Seurat object
+  obj <- seurat_list[[mouse_name]]
+  
+  # Apply the subset function to filter cells based on the given criteria
+  obj <- subset(obj, subset = nFeature_RNA > 200 &
+                                      percent.mt < 10 &
+                                      doublet_scores < 0.4)
+  
+  # Update the Seurat object back into the Seurat list
+  seurat_list[[mouse_name]] <- obj
+}
+```
+
+## Save Objects
+
+```{r}
+"{path}/2-qc/objects/se_list_qc.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qsave(seurat_list,.)
+
+```
+
+## Session Information 
+
+```{r}
+sessionInfo()
+```
