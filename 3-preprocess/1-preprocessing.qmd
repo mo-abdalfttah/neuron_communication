@@ -4,11 +4,18 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 params:
   title: "Neural Circuits - Preprocessing"
 format:
-  html:
-    toc: true
-    toc-location: left
-    number-sections: true
-    df-print: paged
+    html:
+      toc-title: Table of contents
+      toc: true
+      toc-depth: 2
+      number-sections: true
+      highlight-style: github
+      cap-location: top
+      page-layout: full
+      embed-resources: true
+      self-contained-math: true
+      toc-expand: true
+      df-print: paged
 editor: 
   render-on-save: true
 ---
@@ -17,21 +24,15 @@ editor:
 
 After quality check and control, we need to do some pre-processing for the single cell data, this processing including Normalization, select the Highly Variable Genes, Dimensionality reduction.
 
-```         
- "482n1" Lung
- "b16" Melanoma
- "eo7711" Breast
-```
-
 ## Load Libraries
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 #BiocManager::install("scran")
 #install.packages("VennDiagram")
 #install.packages("UpSetR")
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 library(here)
 library(Seurat)
 library(tidyverse)
@@ -51,11 +52,11 @@ library(scran)
 
 ## Load Objects
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 path <- "/home/mabdalfttah/projects/neural_circuits/"
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 seurat_list <- "{path}/2-qc/objects/se_list_qc.qs" %>%
   glue::glue() %>%
   here::here() %>%
@@ -65,7 +66,7 @@ seurat_list
 
 ## Normalization
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 seurat_list <- lapply(X = seurat_list,FUN = function(obj){
   NormalizeData(obj)
 })
@@ -109,14 +110,14 @@ In this step, we don't use Seurat default method, which is vst method, but we us
 
 -   **bio**: The variance remaining after subtracting the technical component from the total variance (the biological variation).
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 sce_list <- lapply(seurat_list, function(obj) {
   as.SingleCellExperiment(obj)
 })
 
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 # Initialize a list to store HVG results
 hvg_list <- list()
 
@@ -136,7 +137,7 @@ print(hvg_list[[1]])
 
 #### Add the HVG to Seurat object!
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 for (i in seq_along(seurat_list)) {
   VariableFeatures(seurat_list[[i]]) <-  hvg_list[[i]]
 }
@@ -144,7 +145,7 @@ for (i in seq_along(seurat_list)) {
 
 ## Pre-processing
 
-```{r}
+```{r, fig.width=15, fig.height=7, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 seurat_list <- lapply(seurat_list, function(obj){
   mouse_name <- unique(obj$orig.ident)
   cat("\n==========================================\n")
@@ -168,7 +169,7 @@ seurat_list <- lapply(seurat_list, function(obj){
 
 ## Save Object
 
-```{r}
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 "{path}/3-preprocess/objects/se_list_preprocess.qs" %>%
   glue::glue() %>%
   here::here() %>%
@@ -178,6 +179,6 @@ seurat_list <- lapply(seurat_list, function(obj){
 
 ## Session Information
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 sessionInfo()
 ```

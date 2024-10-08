@@ -4,11 +4,18 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 params:
   title: "Neural Circuits - Quality Control"
 format:
-  html:
-    toc: true
-    toc-location: left
-    number-sections: true
-    df-print: paged
+    html:
+      toc-title: Table of contents
+      toc: true
+      toc-depth: 2
+      number-sections: true
+      highlight-style: github
+      cap-location: top
+      page-layout: full
+      embed-resources: true
+      self-contained-math: true
+      toc-expand: true
+      df-print: paged
 editor: 
   render-on-save: true
 ---
@@ -19,13 +26,13 @@ In this script we will read merged object and perform the QC for each mouse mode
 
 ## Install Packages
 
-```{r,eval=FALSE}
+```{r,eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 
 ```
 
 ## Load Libraries
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 library(here)
 library(Seurat)
 library(tidyverse)
@@ -44,7 +51,7 @@ library(reticulate)
 
 ## Create Functions
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 theme_plot <- theme(text = element_text(size = 20),    
       title = element_text(size = 20),    
       axis.title = element_text(size = 20),
@@ -58,13 +65,13 @@ theme_plot <- theme(text = element_text(size = 20),
 
 ### Define Path
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 path <- "/home/mabdalfttah/projects/neural_circuits"
 ```
 
 ### Load Object
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 se_obj <- "{path}/1-data/seurat_obj_experiment.rds" %>%
     glue::glue() %>%
     here::here() %>%
@@ -73,7 +80,7 @@ se_obj <- "{path}/1-data/seurat_obj_experiment.rds" %>%
 
 ### Split Objects
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 seurat_list <- SplitObject(se_obj, split.by = "orig.ident")
 ```
 
@@ -113,7 +120,7 @@ We will use [SingleCellExperiment](https://www.bioconductor.org/packages/release
 
 -   **Rationale:** This threshold is designed to retain 99% of non-outlier values under a normal distribution.
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 SCE_list <- list()
 for (mouse_name in names(seurat_list)) {
   obj <- seurat_list[[mouse_name]]
@@ -172,7 +179,7 @@ for (mouse_name in names(seurat_list)) {
 
 ### Visualization
 
-```{r, fig.width=20, fig.height=7}
+```{r, fig.width=20, fig.height=7, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 # Loop through each sample in the Seurat list and the corresponding SCE object
 for (mouse_name in names(seurat_list)) {
   
@@ -242,12 +249,12 @@ it should be:
 
 `X <- as(Matrix::t(seurat_obj@assays$RNA@layers$counts), "TsparseMatrix")`
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 trace(scrublet_R, edit = TRUE)
 
 ```
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 # First install python for reticulate
 # bash -c "$(curl -L https://rstd.io/python-install)"
 # library(reticulate)
@@ -268,21 +275,21 @@ scrublet_list <- lapply(seurat_list, function(seurat_obj) {
 })
 ```
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 "{path}/2-qc/objects/scrublet_results.qs" %>%
   glue::glue() %>%
   here::here() %>%
   qsave(scrublet_list,.)
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 scrublet_list <- "{path}/2-qc/objects/scrublet_results.qs" %>%
   glue::glue() %>%
   here::here() %>%
   qread(.)
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 for (mouse_name in names(seurat_list)) {
   
   # Access Seurat object and corresponding Scrublet dataframe for the current mouse
@@ -302,9 +309,9 @@ for (mouse_name in names(seurat_list)) {
 }
 ```
 
-### Visualization 
+### Visualization
 
-```{r, fig.width=20, fig.height=15}
+```{r, fig.width=20, fig.height=15, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 # Loop through each Seurat object in the seurat_list
 for (mouse_name in names(seurat_list)) {
   
@@ -367,7 +374,7 @@ for (mouse_name in names(seurat_list)) {
 
 ## Filter Low Quality Cells
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 # Loop through each Seurat object in the list and apply the subset operation
 for (mouse_name in names(seurat_list)) {
   
@@ -386,7 +393,7 @@ for (mouse_name in names(seurat_list)) {
 
 ## Save Objects
 
-```{r}
+```{r,eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 "{path}/2-qc/objects/se_list_qc.qs" %>%
   glue::glue() %>%
   here::here() %>%
@@ -394,8 +401,8 @@ for (mouse_name in names(seurat_list)) {
 
 ```
 
-## Session Information 
+## Session Information
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 sessionInfo()
 ```
