@@ -1,0 +1,225 @@
+---
+author: "Mohamed Abdalfttah"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  title: "Neural Circuits - Merge Objects and subset Cancer cells"
+format:
+    html:
+      toc-title: Table of contents
+      toc: true
+      toc-depth: 2
+      number-sections: true
+      highlight-style: github
+      cap-location: top
+      page-layout: full
+      embed-resources: true
+      self-contained-math: true
+      toc-expand: true
+      df-print: paged
+editor: 
+  render-on-save: true
+---
+
+## Script Description
+
+In this script we will prepare the object to annotate all cells together as preparation step for DE analysis, steps to acheve this is:
+
+-   Merge All objects together
+
+-   Subset Cancer cells
+
+-   Integrate all of the object
+
+```         
+ "482n1" Lung
+ "b16" Melanoma
+ "eo7711" Breast
+```
+
+## Load Libraries
+
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(here)
+library(Seurat)
+library(tidyverse)
+library(harmony)
+library(scuttle)
+library(scater)
+library(scCustomize)
+library(SCpubr)
+library(ggsci)
+library(scrubletR)
+library(qs)
+library(infercnv)
+library(reticulate)
+library(scran)
+library(viridis)
+library(glue)
+```
+
+## Create Function
+
+```{r,eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+```
+
+## Load Objects
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+path <- "/home/mabdalfttah/projects/neural_circuits/"
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+files <- "{path}/4-annotation/objects/" %>%
+  glue::glue() %>%
+  here::here() %>%
+  list.files(.,".qs")
+files
+
+seurat_list <- lapply(X = files,FUN = function(obj){
+  "{path}/4-annotation/objects/{obj}" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qread(.)
+})
+
+seurat_list
+```
+
+## Merge Objects
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj <- merge(seurat_list[[1]], y = seurat_list[-1])
+se_obj
+se_obj <- JoinLayers(se_obj)
+se_obj
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj$annotation_lvl1 <- str_replace(se_obj$annotation_lvl1,pattern = "Epithelial ", replacement = "Epithelial")
+```
+
+## Cell Percentage Per Model
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+metadata <- se_obj@meta.data
+
+percentage_data <- metadata %>%
+  group_by(orig.ident, annotation_lvl1) %>%
+  summarise(Freq = n()) %>%
+  mutate(Percentage = Freq / sum(Freq) * 100)
+
+ggplot(percentage_data, aes(x = orig.ident, y = Percentage, fill = annotation_lvl1)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Sample", y = "Percentage", title = "Cell Type Distribution Across Samples") +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  scale_fill_manual(values = ggsci::pal_igv()(50))
+```
+
+## Subset Tumor Cells
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj <- subset(se_obj, subset = annotation_lvl1 %in% c("Epithelial", "Melanocytes"), invert = T)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+unique(se_obj$annotation_lvl1)
+```
+
+## Cell Percentage Per Model (No Tumor)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+metadata <- se_obj@meta.data
+
+percentage_data <- metadata %>%
+  group_by(orig.ident, annotation_lvl1) %>%
+  summarise(Freq = n()) %>%
+  mutate(Percentage = Freq / sum(Freq) * 100)
+
+ggplot(percentage_data, aes(x = orig.ident, y = Percentage, fill = annotation_lvl1)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Sample", y = "Percentage", title = "Cell Type Distribution Across Samples") +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  scale_fill_manual(values = ggsci::pal_igv()(50))
+```
+
+# Integrate Models
+
+## Select Highly Variable Genes 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+SCE <- as.SingleCellExperiment(se_obj)
+HVG_model <- modelGeneVar(SCE)
+HVG_model <- getTopHVGs(stats = HVG_model, fdr.threshold = 0.01)
+length(HVG_model)
+rm(SCE)
+```
+
+```{r}
+VariableFeatures(se_obj) <-  HVG_model
+```
+
+## Before Integration 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj <- NormalizeData(se_obj)
+all.genes <- rownames(se_obj)
+se_obj <- ScaleData(se_obj, features = all.genes)
+se_obj <- RunPCA(se_obj, features = VariableFeatures(object = se_obj))
+print(se_obj[["pca"]], dims = 1:5, nfeatures = 5)
+print(ElbowPlot(se_obj,ndims = 50))
+se_obj <- FindNeighbors(se_obj, dims = 1:30)
+se_obj <- RunUMAP(se_obj, dims = 1:30)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+DimPlot(se_obj, group.by = "orig.ident", cols = ggsci::pal_igv()(50))
+DimPlot(se_obj, group.by = "annotation_lvl1", cols = ggsci::pal_igv()(50))
+```
+
+## Harmony Integration 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj <- RunHarmony(se_obj, "orig.ident", plot_convergence = TRUE)
+se_obj
+```
+
+## After integration
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj <- FindNeighbors(se_obj, dims = 1:30,reduction = "harmony")
+se_obj <- FindClusters(se_obj, resolution = c(0.1, 0.2, 0.3, 0.4))
+se_obj <- RunUMAP(se_obj, dims = 1:30, reduction = "harmony")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+DimPlot(se_obj, group.by = "orig.ident", cols = ggsci::pal_igv()(50))
+DimPlot(se_obj, group.by = "annotation_lvl1", cols = ggsci::pal_igv()(50))
+```
+
+```{r, fig.width=15, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+DimPlot(se_obj, group.by = c("RNA_snn_res.0.1", "RNA_snn_res.0.2", "RNA_snn_res.0.3", "RNA_snn_res.0.4"),
+        cols = ggsci::pal_igv()(50), ncol = 2)
+
+```
+
+# Save Object
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+"{path}/5-integ/objects/se_tme_integ.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qsave(se_obj,.)
+```
+
+# Session information  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+sessionInfo()
+```

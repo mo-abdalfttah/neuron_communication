@@ -16,11 +16,13 @@ editor:
 
 ## Script Description
 
-In this script we will annotate the cells from each mouse model separately using two approaches:
+InferCNV is a tool used to detect changes in the number of copies of chromosomes, which are common in cancer cells. It doesn't directly identify cancerous cells, but it looks for these chromosome changes that often happen in cancer.
 
-1- Canonical Markers
+To do this, inferCNV needs a group of normal, healthy cells to use as a reference or baseline. These normal cells should have stable chromosomes, without major changes. In the analysis, you’ll see two main heatmaps:
 
-2- Gene expression profile
+- Top heatmap: Shows the normal cells, which serve as a comparison. These cells don’t have significant changes, so their heatmap looks pretty stable.
+
+- Bottom heatmap: Shows the cancerous cells. These cells often have a lot of changes in their chromosomes, which inferCNV highlights as red (more copies of certain chromosomes) or blue (fewer copies or losses of certain chromosomes).
 
 ```         
  "482n1" Lung
@@ -42,14 +44,11 @@ In this script we will annotate the cells from each mouse model separately using
 library(here)
 library(Seurat)
 library(tidyverse)
-library(DoubletFinder)
-library(harmony)
 library(scuttle)
 library(scater)
 library(scCustomize)
 library(SCpubr)
 library(ggsci)
-library(scrubletR)
 library(qs)
 library(infercnv)
 library(reticulate)
@@ -60,7 +59,7 @@ library(quarto)
 ```
 
 ```{r}
-path <- "/home/mabdalfttah/projects/neural_circuits/"
+path <- "/home/mabdalfttah/projects/neural_circuits"
 ```
 
 # Load data
@@ -103,9 +102,8 @@ rownames(gene_order_file) <- rows_gene_order
 
 ```{r}
 annotations_file <- data.frame(row.names = rownames(se_obj@meta.data), celltype = se_obj@meta.data$annotation_lvl1)
-annotations_file$celltype <- ifelse(annotations_file$celltype %in% c("Excitatory neurons", "Inhibitory neurons", "Astrocytes"), 
-                       "normal", annotations_file$celltype)
-unique(annotations_file$celltype)
+#annotations_file$celltype <- ifelse(annotations_file$celltype %in% c("Excitatory neurons", "Inhibitory neurons", "Astrocytes"), 
+#                       "normal", annotations_file$celltype)
 colnames(annotations_file) <- NULL
 ```
 
@@ -115,13 +113,13 @@ colnames(annotations_file) <- NULL
 infercnv_obj = CreateInfercnvObject(raw_counts_matrix=se_obj@assays$RNA$counts,
                                     annotations_file=annotations_file,
                                     gene_order_file=gene_order_file,
-                                    ref_group_names=c("normal"))
+                                    ref_group_names=c("Excitatory neurons", "Inhibitory neurons", "Astrocytes", "Oligodendrocytes", "Endothelial", "Microglia"))
 ```
 
 # Run InferCnv
 
 ```{r}
-output <- "{path}/4-annotation/objects/infercnv_out/{model}" %>%
+output <- "{path}/4-annotation/objects/infercnv_out/{model}_newref" %>%
   glue::glue() %>%
   here::here()
 ```
@@ -136,16 +134,7 @@ infercnv_obj = infercnv::run(infercnv_obj,
                              )
 ```
 
-# How it is work? 
-
-InferCNV is a tool used to detect changes in the number of copies of chromosomes, which are common in cancer cells. It doesn't directly identify cancerous cells, but it looks for these chromosome changes that often happen in cancer.
-
-To do this, inferCNV needs a group of normal, healthy cells to use as a reference or baseline. These normal cells should have stable chromosomes, without major changes. In the analysis, you’ll see two main heatmaps:
-
-- Top heatmap: Shows the normal cells, which serve as a comparison. These cells don’t have significant changes, so their heatmap looks pretty stable.
-
-- Bottom heatmap: Shows the cancerous cells. These cells often have a lot of changes in their chromosomes, which inferCNV highlights as red (more copies of certain chromosomes) or blue (fewer copies or losses of certain chromosomes).
-
 ```{r}
 sessionInfo()
 ```
+

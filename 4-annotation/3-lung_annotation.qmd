@@ -4,11 +4,18 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 params:
   title: "Neural Circuits - Annotation Lung Model"
 format:
-  html:
-    toc: true
-    toc-location: left
-    number-sections: true
-    df-print: paged
+    html:
+      toc-title: Table of contents
+      toc: true
+      toc-depth: 2
+      number-sections: true
+      highlight-style: github
+      cap-location: top
+      page-layout: full
+      embed-resources: true
+      self-contained-math: true
+      toc-expand: true
+      df-print: paged
 editor: 
   render-on-save: true
 ---
@@ -21,22 +28,16 @@ In this script we will annotate the cells from each mouse model separately using
 
 2- Gene expression profile
 
-```         
- "482n1" Lung
- "b16" Melanoma
- "eo7711" Breast
-```
-
 ## Load Libraries
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 #install.packages("devtools")
 #devtools::install_github("immunogenomics/presto")
 #install.packages('assertthat')
 #BiocManager::install("ComplexHeatmap")
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 library(here)
 library(Seurat)
 library(tidyverse)
@@ -58,7 +59,7 @@ library(glue)
 
 ## Create Function
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 Save_Markers = function(Markers, Path_write){
   mgs_ls = lapply(sort(unique(Markers$cluster)), function(clust) {
     Markers %>%
@@ -72,11 +73,11 @@ Save_Markers = function(Markers, Path_write){
 
 ## Load Objects
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 path <- "/home/mabdalfttah/projects/neural_circuits/"
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 seurat_list <- "{path}/3-preprocess/objects/se_list_preprocess.qs" %>%
   glue::glue() %>%
   here::here() %>%
@@ -86,16 +87,16 @@ seurat_list
 
 ### Select the model
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 model <- "482n1"
 se_obj <- seurat_list[[model]]
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 rm(seurat_list)
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 DimPlot(se_obj, cols = ggsci::pal_igv()(50), group.by = "orig.ident", label = T)
 DimPlot(se_obj, cols = ggsci::pal_igv()(50), group.by = "RNA_snn_res.0.2", label = T)
 VlnPlot(se_obj, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), pt.size = 0)
@@ -103,14 +104,14 @@ VlnPlot(se_obj, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), pt.siz
 
 ### Check the Doublets
 
-```{r, fig.width=5}
+```{r, fig.width=5, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 FeaturePlot(object = se_obj, features = "doublet_scores") 
 DimPlot(object = se_obj, group.by = "predicted_doublets")
 ```
 
 # Explaring the Markers
 
-```{r, fig.width=15, fig.height=10}
+```{r, fig.width=15, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 # Assuming seurat_obj is your Seurat object for visualization
 brain_cell_types_markers <- list(
   Neurons = c("Snap25", "Rbfox3", "Syt1", "Grin1", "Gad1", "Gad2", "Slc17a7", "Map2"),
@@ -152,7 +153,7 @@ for (cell_type in names(brain_cell_types_markers)) {
 
 Here is this paper they annotate the major cell types like this: Annotation of cell clusters based on the expression of canonical gene markers identified the following populations: excitatory neurons (Ex) that express *SYT1* and *SLC17A7*, inhibitory neurons (In) that express *SYT1* and *GAD1*, astrocytes (Ast1 and Ast2) that express *AQP4*, ependymal cells (Ep) that express *CFAP299*, oligodendrocyte progenitor cell (OPC) that express *VCAN*, oligodendrocytes (Oli) that express *MOBP*, epithelial cells (Epi) that express *HTR2C*, endothelial cells (End) that express *FLT1*, mesenchymal cells (Mes) that express *COL1A1*, pericytes (Per1 and Per2) that express *PDGFRB*, microglial cells (Mic) that express *APBB1IP*, and lymphocyte (LM) that express *CD96* and monocytes/macrophage (Mo/MP), expressing *CD163* ([reference](https://genomemedicine.biomedcentral.com/articles/10.1186/s13073-021-00933-8))
 
-```{r, fig.width=15, fig.height=10}
+```{r, fig.width=15, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 genes <- str_to_title(c("SYT1", # Neurons
                                               "SLC17A7", # excitatory neurons
                                               "GAD1", # inhibitory neurons
@@ -178,14 +179,14 @@ VlnPlot(se_obj, features = genes, cols = ggsci::pal_igv()(50),
 
 # Calculate Marker Genes
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 Idents(se_obj) <- se_obj$RNA_snn_res.0.2
 markers <- FindAllMarkers(object = se_obj, min.pct = 0.25, logfc.threshold = 0.25)
 ```
 
 ## Heatmap Visulization
 
-```{r, fig.height=10, fig.width=10}
+```{r, fig.height=10, fig.width=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 markers %>%
     group_by(cluster) %>%
     dplyr::filter(avg_log2FC > 1) %>%
@@ -196,7 +197,7 @@ DoHeatmap(se_obj, features = top10$gene) + NoLegend()
 
 ### Save Marker Genes
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 "{path}/4-annotation/objects/{model}_markers_res_0.2.xlsx" %>%
   glue::glue() %>%
   here::here() %>%
@@ -205,7 +206,7 @@ DoHeatmap(se_obj, features = top10$gene) + NoLegend()
 
 # Assign The Annotation
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 se_obj@meta.data <- se_obj@meta.data %>%
   mutate(annotation_lvl1 = case_when(
     RNA_snn_res.0.2 == 0 ~ "Excitatory neurons",
@@ -225,13 +226,13 @@ se_obj@meta.data <- se_obj@meta.data %>%
   ))
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 DimPlot(se_obj, group.by = "annotation_lvl1", cols = ggsci::pal_igv()(50))
 ```
 
 ## Confirm the Annotation
 
-```{r, fig.width=10, fig.height=10}
+```{r, fig.width=10, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 genes_multiple <- str_to_title(c("Gfap", "Aqp4", "Aldh1l1","Slc1a3", "S100b", # Astrocytes
                                   "Flt1", "Pecam1", "Cldn5", "Cdh5","Slco1c1", # Endothilial 
                                  "Krt18", "Epcam", "Krt19", "Krt23", # Epithilial 
@@ -248,7 +249,7 @@ genes_multiple <- str_to_title(c("Gfap", "Aqp4", "Aldh1l1","Slc1a3", "S100b", # 
 
 ### Dot plot
 
-```{r, fig.width=10, fig.height=10}
+```{r, fig.width=10, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 DotPlot(object = se_obj, features = genes_multiple, group.by = "annotation_lvl1") + 
   scale_color_viridis(option = "viridis",direction = 1) +
   coord_flip() +
@@ -262,7 +263,7 @@ DotPlot(object = se_obj, features = genes_multiple, group.by = "annotation_lvl1"
 
 ### Clusterd Dot plot
 
-```{r, fig.width=10, fig.height=10}
+```{r, fig.width=10, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 Clustered_DotPlot(seurat_object = se_obj, 
                   features = genes_multiple, 
                   cluster_ident = T,
@@ -272,7 +273,7 @@ Clustered_DotPlot(seurat_object = se_obj,
 
 # Save Object
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 "{path}/4-annotation/objects/se_obj_{model}.qs" %>%
   glue::glue() %>%
   here::here() %>%
@@ -281,6 +282,6 @@ Clustered_DotPlot(seurat_object = se_obj,
 
 # Session Information
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 sessionInfo()
 ```

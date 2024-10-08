@@ -1,0 +1,267 @@
+---
+author: "Mohamed Abdalfttah"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  title: "Neural Circuits - TME Annotation (Integrated Object!)"
+format:
+    html:
+      toc-title: Table of contents
+      toc: true
+      toc-depth: 2
+      number-sections: true
+      highlight-style: github
+      cap-location: top
+      page-layout: full
+      embed-resources: true
+      self-contained-math: true
+      toc-expand: true
+      df-print: paged
+editor: 
+  render-on-save: true
+---
+
+# Script Description
+
+In this script we will use cononical marker genes and DE markers to annotate the main cell types of TME from the integrated object!
+
+# Load Libraries
+
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(here)
+library(Seurat)
+library(tidyverse)
+library(harmony)
+library(scuttle)
+library(scater)
+library(scCustomize)
+library(SCpubr)
+library(ggsci)
+library(scrubletR)
+library(qs)
+library(infercnv)
+library(reticulate)
+library(scran)
+library(viridis)
+library(glue)
+```
+
+# Create Function
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+Save_Markers = function(Markers, Path_write){
+  mgs_ls = lapply(sort(unique(Markers$cluster)), function(clust) {
+    Markers %>%
+      dplyr::filter(cluster == clust & pct.1 > 0.25) %>%
+      dplyr::arrange(dplyr::desc(avg_log2FC))
+  })
+  names(mgs_ls) = glue("cluster-{sort(unique(Markers$cluster))}")
+  openxlsx::write.xlsx(mgs_ls, file = Path_write)}
+```
+
+# Load Objects
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+path <- "/home/mabdalfttah/projects/neural_circuits/"
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj <- "{path}/5-integ/objects/se_tme_integ.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qread(.)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+DimPlot(se_obj, group.by = "RNA_snn_res.0.1", cols = ggsci::pal_igv()(50))
+DimPlot(se_obj, group.by = "annotation_lvl1", cols = ggsci::pal_igv()(50))
+DimPlot(se_obj, group.by = "orig.ident", cols = ggsci::pal_igv()(50))
+
+```
+
+# Map cononical markers
+
+```{r, fig.width=15, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+# Assuming seurat_obj is your Seurat object for visualization
+brain_cell_types_markers <- list(
+  Neurons = c("Snap25", "Rbfox3", "Syt1", "Grin1", "Gad1", "Gad2", "Slc17a7", "Map2"),
+  Astrocytes = c("Gfap", "Aqp4", "Aldh1l1", "Slc1a3", "S100b"),
+  Oligodendrocytes = c("Mog", "Olig2", "Plp1", "Cnp", "Mbpa"),
+  Microglia = c("C1qa", "Csf1r", "P2ry12", "Aif1", "Tmem119"),
+  OPCs = c("Pdgfra", "Cspg4", "Sox10", "Olig1", "Olig2"),
+  Endothelial = c("Flt1", "Pecam1", "Cldn5", "Cdh5", "Slco1c1"),
+  Ependymal = c("Foxj1", "Vim", "Ttr", "Dnah5", "Sox9"),
+  vSMCs = c("Acta2", "Tagln", "Myh11", "Cnn1", "Lmod1"),
+  Pericytes = c("Pdgfrb", "Rgs5", "Anpep", "Cspg4", "Kcnj8"),
+  Monocytes = c("Cd14", "Psap", "S100a9", "Fcer1g"),
+  Epithilial = c("Krt18", "Epcam", "Krt19", "Krt23"),
+  T_Cells = c("Ptprc", "Cd3e", "Cd3d", "Cd8a", "Cd3g"),
+  NK = c("Ncr1", "Klra8", "Klri2", "Klrb1c"),
+  Mesenchymal  = c("Dcn", "Col3a1", "Col1a1")
+)
+
+# Loop through each cell type and visualize the markers using FeaturePlot
+for (cell_type in names(brain_cell_types_markers)) {
+  markers <- brain_cell_types_markers[[cell_type]]
+  print(paste("Visualizing", cell_type, "markers"))
+  print(FeaturePlot(se_obj, features = markers, ncol = 3) + 
+    theme(plot.title = element_text(hjust = 0.5)))  # Center the title
+}
+
+# Loop through each cell type and visualize the markers using FeaturePlot
+for (cell_type in names(brain_cell_types_markers)) {
+  markers <- brain_cell_types_markers[[cell_type]]
+  print(paste("Visualizing", cell_type, "markers"))
+  print(VlnPlot(se_obj, features = markers,group.by = "RNA_snn_res.0.1",
+                cols = ggsci::pal_igv()(50), pt.size = 0) + 
+    theme(plot.title = element_text(hjust = 0.5)))  # Center the title
+}
+
+```
+
+# Calculate Marker Genes
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+Idents(se_obj) <- se_obj$RNA_snn_res.0.1
+markers <- FindAllMarkers(object = se_obj, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+## Save Marker Genes
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+"{path}/5-integ/objects/tme_markers_res_0.1.xlsx" %>%
+  glue::glue() %>%
+  here::here() %>%
+  Save_Markers(markers, Path_write = .)
+```
+
+## Cluster 13
+
+It is m not clear what is the cluster 13 is!
+
+We check which top genes this population express. Some of those genes shared the expression with cluster 6 (Inhibitory Neurons). Meaning it is neurons, but which type of neurons?
+
+-   **Igfbpl1**: Neural precursor cells tune striatal connectivity through the release of IGFBPL1 ([Reference](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9731988/))
+
+-   **Draxin**: Draxin acts as a molecular rheostat of canonical Wnt signaling to control cranial neural crest EMT ([Reference](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6168252/))
+
+-   **Sp8**: A dual role for the transcription factor Sp8 in postnatal neurogenesis ([Reference](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6162233/))
+
+-   **Sox11**: our findings indicate that the transcription factor Sox11 plays a crucial role in suppressing dendritic morphogenesis, especially during radial migration ([Reference](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6601844/))
+
+```{r, fig.width=15, fig.height=15, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+genes <- c("Igfbpl1", "Draxin", "Sp8", "Dlx2", "Dlx1", "Sp9", "Cdca7", 
+           "Mex3a", "Sox11", "Dlx5", "Gpc2", "Sox4", "Arx", "Insm1", 
+           "Zfp57", "Dpysl3")
+VlnPlot(se_obj,features = genes, cols = ggsci::pal_igv()(50))
+```
+
+## Cluster 12
+
+We identified a melanoma population that went undetected when analyzing each mouse model individually. These cells were initially annotated as astrocytes, neurons, and microglia due to their small size and did not cluster with the primary, larger melanocyte population in b16 model
+
+```{r, fig.width=15, fig.height=15, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+melanoma_markers <- c("Mitf", "Tyr", "Dct", "Mlana", "Pmel", "Sox10", "Mki67", "Top2a")
+VlnPlot(se_obj, features = melanoma_markers, ncol = 3, pt.size = 0)
+```
+
+## Final Annotation!
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj@meta.data <- se_obj@meta.data %>%
+  mutate(annotation_lvl1_tme = case_when(
+    RNA_snn_res.0.1 == 0 ~ "Excitatory neurons",
+    RNA_snn_res.0.1 == 1 ~ "Oligodendrocytes",
+    RNA_snn_res.0.1 == 2 ~ "Astrocytes",
+    RNA_snn_res.0.1 == 3 ~ "Myeloid (antigen-presentation)",
+    RNA_snn_res.0.1 == 4 ~ "Microglia",
+    RNA_snn_res.0.1 == 5 ~ "Excitatory neurons",
+    RNA_snn_res.0.1 == 6 ~ "Inhibitory neurons",
+    RNA_snn_res.0.1 == 7 ~ "Myeloid (inflammatory)",
+    RNA_snn_res.0.1 == 8 ~ "Inhibitory neurons",
+    RNA_snn_res.0.1 == 9 ~ "NK/T",
+    RNA_snn_res.0.1 == 10 ~ "Endothelial",
+    RNA_snn_res.0.1 == 11 ~ "OPCs",
+    RNA_snn_res.0.1 == 12 ~ "Melanocytes",
+    RNA_snn_res.0.1 == 13 ~ "Neural stem/precursor cells",
+    RNA_snn_res.0.1 == 14 ~ "Mesenchymal"
+  ))
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+DimPlot(se_obj, group.by = "RNA_snn_res.0.1", cols = ggsci::pal_igv()(50))
+DimPlot(se_obj, group.by = "orig.ident", cols = ggsci::pal_igv()(50))
+DimPlot(se_obj, group.by = "annotation_lvl1", cols = ggsci::pal_igv()(50))
+DimPlot(se_obj, group.by = "annotation_lvl1_tme", cols = ggsci::pal_igv()(50))
+```
+
+## Subset Melanocytes
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+se_obj <- subset(se_obj, subset = annotation_lvl1_tme %in% c("Melanocytes"), invert = T)
+se_obj
+```
+
+```{r, fig.width=10, fig.height=10, echo=FALSE}
+genes_multiple <- str_to_title(c("Gfap", "Aqp4", "Aldh1l1","Slc1a3", "S100b", # Astrocytes
+                                  "Flt1", "Pecam1", "Cldn5", "Cdh5","Slco1c1", # Endothilial 
+                                  "Snap25", "Rbfox3", "Syt1", "Grin1","Gad1", "Gad2", "Slc17a7", "Map2", # Neuoron 
+                                  "COL1A1", "Dcn", "Col3a1", # Mesenchymal
+                                  "C1qa", "Csf1r", "P2ry12", "Aif1", "Tmem119", # Microglia
+                                 "Cd14", "S100a9", "Fcer1g", "H2-Eb1", "H2-Aa", "Cxcr2", "Il1f9",  # Myeloid
+                                 "Igfbpl1", "Draxin","Sox11", # Neuron Stem Cells
+                                 "Ptprc", "Cd3e", "Cd3d", "Cd8a", "Cd3g", # T Cells
+                                  "Mog", "Olig2", "Plp1", "Cnp", # Oligodendrocytes
+                                  "Pdgfra", "Cspg4", "Sox10", "Olig1" # OPcs
+                                  ))
+```
+
+## Dot plot
+
+```{r, fig.width=10, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+DotPlot(object = se_obj, features = genes_multiple, group.by = "annotation_lvl1_tme") + 
+  scale_color_viridis(option = "viridis",direction = 1) +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_point(aes(size = pct.exp * 1.1),  # Increase size slightly to create the halo
+             shape = 21,  # Use a circle outline
+             fill = NA,  # Hollow circle
+             color = "black",  # Outline color (can adjust)
+             stroke = 0.8)
+```
+
+# TME Percentage Per Model 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+metadata <- se_obj@meta.data
+
+percentage_data <- metadata %>%
+  group_by(orig.ident, annotation_lvl1_tme) %>%
+  summarise(Freq = n()) %>%
+  mutate(Percentage = Freq / sum(Freq) * 100)
+
+ggplot(percentage_data, aes(x = orig.ident, y = Percentage, fill = annotation_lvl1_tme)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Sample", y = "Percentage", title = "Cell Type Distribution Across Samples") +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  scale_fill_manual(values = ggsci::pal_igv()(50))
+```
+
+# Save Object
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+"{path}/5-integ/objects/se_tme_integ_annotated.qs" %>%
+  glue::glue() %>%
+  here::here() %>%
+  qsave(se_obj,.)
+```
+
+# Session Information
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+sessionInfo()
+```
