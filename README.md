@@ -28,7 +28,7 @@ This repository is organized into several folders, each dedicated to specific an
 ## Outputs (What you need to check)
 - **HTML Files:** These files provide detailed reports of the analyses conducted at each step.
 - **PNG Files:** InferCNV Results (infercnv.png and infercnv.17_HMM_predHMMi6.leiden.hmm_mode-subclusters.png)
-- **xlsx**: This is excel file contain the marker genes calculated for each cluster in each model or integrated data (within each scel file, each sheet have the genes of each cluster)
+- **xlsx**: This is excel file contain the marker genes calculated for each cluster in each model or integrated data (within each xcel file, each sheet have the genes of each cluster)
 - **qs:** This is the original scripts (you don't need to open it or share with with anyone)
 
 ## Collaboration and Sharing
